@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="format-detection" content="telephone=no">
+    <title>3D Koordinaten-Tool (allgemein, Standardebenen)</title>
+    <style>
+        html, body { width: 100%; height: 100%; }
+        body { margin: 0; overflow: hidden; background-color: #ffffff; font-family: -apple-system, sans-serif; touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+        button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        #right-dock { position: absolute; right: 20px; top: calc(20px + env(safe-area-inset-top)); z-index: 100; max-height: calc(100vh - 40px); overflow-y: auto; -webkit-overflow-scrolling: touch; transition: transform 0.35s cubic-bezier(.4,0,.2,1); }
+        body.panels-collapsed #right-dock { transform: translateX(calc(100% + 60px)); }
+        .panel { z-index: 100; background: rgba(255,255,255,0.9); padding: 12px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); width: 200px; margin-bottom: 14px; }
+        #panel-toggle { position: absolute; top: 50%; right: 228px; transform: translateY(-50%); z-index: 200; width: 26px; height: 64px; background: rgba(255,255,255,0.95); border: 1px solid #ccc; border-right: none; border-radius: 10px 0 0 10px; box-shadow: -2px 2px 12px rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; font-size: 15px; color: #007AFF; cursor: pointer; user-select: none; -webkit-user-select: none; transition: right 0.35s cubic-bezier(.4,0,.2,1); }
+        body.panels-collapsed #panel-toggle { right: 0; }
+        .toggle-btn, .tool-btn { display: block; width: 100%; margin-bottom: 6px; padding: 12px 10px; border: 1px solid #ccc; border-radius: 8px; background: #fff; font-size: 13px; cursor: pointer; text-align: left; min-height: 44px; }
+        .toggle-btn.active { background: #e3f2fd; border-color: #007AFF; font-weight: bold; }
+        .tool-btn { background: #f0f0f0; font-weight: bold; }
+        #topview-btn.active { background: #ff9500; color: white; border-color: #e68a00; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-card { background: white; padding: 20px; border-radius: 15px; width: 280px; text-align: center; }
+        .modal-input { width: 60px; padding: 8px; margin: 5px; border-radius: 5px; border: 1px solid #ccc; }
+        .modal-input.name { width: 120px; }
+        .axis-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 6px 0; font-size: 14px; }
+        .axis-row input { width: 52px; padding: 6px; border-radius: 5px; border: 1px solid #ccc; text-align: center; }
+        #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 10px 8px 20px; border-radius: 20px; font-size: 14px; display: none; align-items: center; gap: 10px; z-index: 1000; pointer-events: auto; }
+        #toast-cancel { border: none; background: #ff3b30; color: white; font-size: 13px; font-weight: bold; padding: 7px 14px; border-radius: 14px; cursor: pointer; pointer-events: auto; min-height: 30px; }
+        #toast-cancel:active { background: #d9291f; }
+
+        .axis-label { font-size: 18px; font-weight: bold; color: #000; pointer-events: none; }
+        .tick-label { font-size: 11px; color: #000; font-weight: bold; pointer-events: none; }
+        .point-label { font-size: 16px; font-weight: bold; color: #5c8aff; pointer-events: none;
+            -webkit-text-stroke: 2px #000; paint-order: stroke fill; }
+        .edge-label { font-size: 18px; font-family: "Times New Roman", serif; font-style: italic; color: white; text-shadow: 1px 1px 3px black, -1px -1px 3px black; pointer-events: none; }
+        .coord-popup { display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.97); border: 1px solid #007AFF; border-radius: 8px; padding: 6px 8px; font-size: 14px; font-weight: bold; color: #00008b; white-space: nowrap; pointer-events: auto; touch-action: manipulation; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+        .del-btn { margin-left: 4px; border: none; background: #ffecec; border-radius: 6px; cursor: pointer; font-size: 16px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+        .del-btn:active { background: #ffd0d0; }
+
+        #zoom-controls { position: absolute; bottom: 30px; right: 30px; display: flex; flex-direction: column; gap: 12px; z-index: 100; }
+        .zoom-btn { width: 60px; height: 60px; border-radius: 50%; background: white; border: 2px solid #007AFF; font-size: 30px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); cursor: pointer; color: #007AFF; }
+    </style>
+</head>
+<body>
+    <div id="toast">
+        <span id="toast-text">Wähle drei Punkte aus</span>
+        <button id="toast-cancel" type="button" onclick="cancelSelection()">✕ Abbrechen</button>
+    </div>
+
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal-card">
+            <h3>Punkt erstellen</h3>
+            Name: <input type="text" id="mname" class="modal-input name" value="A"><br>
+            x₁: <input type="number" id="mx1" class="modal-input" value="2"><br>
+            x₂: <input type="number" id="mx2" class="modal-input" value="3"><br>
+            x₃: <input type="number" id="mx3" class="modal-input" value="1"><br><br>
+            <button class="tool-btn" onclick="confirmCreatePoint()" style="background:#007AFF; color:white;">Erstellen</button>
+            <button class="tool-btn" onclick="closeModal()">Abbrechen</button>
+        </div>
+    </div>
+
+    <div id="axis-overlay" class="modal-overlay">
+        <div class="modal-card">
+            <h3>Achsen anpassen</h3>
+            <div class="axis-row"><input type="number" id="a1min"> ≤ x₁ ≤ <input type="number" id="a1max"></div>
+            <div class="axis-row"><input type="number" id="a2min"> ≤ x₂ ≤ <input type="number" id="a2max"></div>
+            <div class="axis-row"><input type="number" id="a3min"> ≤ x₃ ≤ <input type="number" id="a3max"></div>
+            <br>
+            <button class="tool-btn" onclick="applyAxisRanges()" style="background:#007AFF; color:white;">Übernehmen</button>
+            <button class="tool-btn" onclick="closeAxisModal()">Abbrechen</button>
+        </div>
+    </div>
+
+    <div id="right-dock">
+    <div id="display-panel" class="panel">
+        <h3 style="margin:0 0 8px 0; font-size: 11px; text-transform: uppercase; color: #666;">Anzeige</h3>
+        <button class="toggle-btn active" id="btn-grid" onclick="uiToggle('grid')">🏁 Gitter AN/AUS</button>
+        <button class="toggle-btn" id="btn-gridmode" onclick="uiToggle('gridmode')">🔳 Gitter: 2D alle Ebenen</button>
+        <button class="toggle-btn" id="btn-axes" onclick="openAxisModal()">📐 Achsen anpassen</button>
+        <button class="toggle-btn" id="topview-btn" onclick="uiToggle('topview')">🗺️ 2D Ansicht</button>
+        <button class="toggle-btn active" id="btn-plane-x1x2" onclick="togglePlane('x1x2')">🔵 Dunkelblau anzeigen</button>
+        <button class="toggle-btn active" id="btn-plane-x1x3" onclick="togglePlane('x1x3')">🟢 Grün anzeigen</button>
+        <button class="toggle-btn active" id="btn-plane-x2x3" onclick="togglePlane('x2x3')">🔴 Rot anzeigen</button>
+    </div>
+
+    <div id="tool-panel" class="panel">
+        <h3 style="margin:0 0 8px 0; font-size: 11px; text-transform: uppercase; color: #666;">Werkzeuge</h3>
+        <button class="tool-btn" onclick="openPointModal()">➕ Punkt erstellen</button>
+        <button class="tool-btn" id="btn-line" onclick="startLineSelection()">📏 Strecke erstellen</button>
+        <button class="tool-btn" id="btn-triangle" onclick="startTriangleSelection()">📐 Dreieck erstellen</button>
+        <button class="tool-btn" onclick="undo()">↩️ Rückgängig</button>
+    </div>
+    </div>
+    <div id="panel-toggle" onclick="togglePanels()">❯</div>
+
+    <div id="zoom-controls">
+        <div class="zoom-btn" id="zoom-in">+</div>
+        <div class="zoom-btn" id="zoom-out">−</div>
+    </div>
+
+    <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        let scene, camera, orthoCamera, activeCamera, renderer, labelRenderer, controls, raycaster;
+        let gridHelper, axesGroup, pointsGroup, triangleGroup, lineGroup, labelGroup, planesGroup;
+        const planeVisible = { x1x2: true, x1x3: true, x2x3: true };
+        const PLANE_COLORS = { x1x2: 0x00008b, x1x3: 0x2e7d32, x2x3: 0xb71c1c };
+        let history = [], selectionMode = false, lineMode = false, selectedPoints = [], pointCounter = 0;
+        // 0 = 1×1-Gitter nur in x₁x₂-Ebene, 1 = 2D-Gitter in allen drei Koordinatenebenen
+        let gridMode = 1;
+        const GRID_LABELS = ["🔲 Gitter: 1×1 (x₁x₂)", "🔳 Gitter: 2D alle Ebenen"];
+
+        let sideRegistry = new Map(), baseNameCounts = {};
+        const POINT_RADIUS = 0.2;
+
+        // Kameraanker ist immer der Ursprung
+        const CAM_TARGET = new THREE.Vector3(0, 0, 0);
+        // Etwas weiter herausgezoomt als der ursprüngliche Standard, damit die x₃-Achse im
+        // positiven Bereich (inkl. Pfeilspitze und Achsenbeschriftung) vollständig sichtbar ist.
+        const CAM_HOME = new THREE.Vector3(13, -13, 10).multiplyScalar(1.2);
+
+        // Standard-Achsenbereiche (individuell einstellbar über "Achsen anpassen")
+        const axisRanges = {
+            x1: { min: -8, max: 8 },
+            x2: { min: -8, max: 8 },
+            x3: { min: -8, max: 8 }
+        };
+        const AXIS_EXT = 0.8; // Überstand der Achse über den Bereich hinaus
+
+        function updateToggleIcon() {
+            document.getElementById('panel-toggle').textContent = document.body.classList.contains('panels-collapsed') ? '❮' : '❯';
+        }
+        function setPanelsCollapsed(state) { document.body.classList.toggle('panels-collapsed', state); updateToggleIcon(); }
+        window.togglePanels = function() { document.body.classList.toggle('panels-collapsed'); updateToggleIcon(); };
+
+        function suggestName() {
+            // A, B, C, ... Z, dann A1, B1, ...
+            return String.fromCharCode(65 + (pointCounter % 26)) + (pointCounter >= 26 ? Math.floor(pointCounter / 26) : '');
+        }
+        window.openPointModal = () => {
+            document.getElementById('mname').value = suggestName();
+            document.getElementById('modal-overlay').style.display = 'flex';
+        };
+        window.closeModal = () => document.getElementById('modal-overlay').style.display = 'none';
+
+        window.openAxisModal = () => {
+            document.getElementById('a1min').value = axisRanges.x1.min;
+            document.getElementById('a1max').value = axisRanges.x1.max;
+            document.getElementById('a2min').value = axisRanges.x2.min;
+            document.getElementById('a2max').value = axisRanges.x2.max;
+            document.getElementById('a3min').value = axisRanges.x3.min;
+            document.getElementById('a3max').value = axisRanges.x3.max;
+            document.getElementById('axis-overlay').style.display = 'flex';
+        };
+        window.closeAxisModal = () => document.getElementById('axis-overlay').style.display = 'none';
+        window.applyAxisRanges = () => {
+            const read = (a, b) => [parseFloat(document.getElementById(a).value), parseFloat(document.getElementById(b).value)];
+            const sets = [['x1','a1min','a1max'],['x2','a2min','a2max'],['x3','a3min','a3max']];
+            for (const [key, aId, bId] of sets) {
+                let [mn, mx] = read(aId, bId);
+                if (isNaN(mn) || isNaN(mx)) return;
+                if (mn > mx) [mn, mx] = [mx, mn];
+                axisRanges[key].min = mn;
+                axisRanges[key].max = mx;
+            }
+            buildAxes();
+            buildGrid();
+            buildPlanes();
+            updateOrtho();
+            closeAxisModal();
+        };
+
+        window.uiToggle = function(type) {
+            if (type === 'grid' && gridHelper) { gridHelper.visible = !gridHelper.visible; document.getElementById('btn-grid').classList.toggle('active'); }
+            if (type === 'gridmode') {
+                gridMode = (gridMode + 1) % 2;
+                document.getElementById('btn-gridmode').textContent = GRID_LABELS[gridMode];
+                buildGrid();
+            }
+            if (type === 'topview') {
+                const btn = document.getElementById('topview-btn');
+                btn.classList.toggle('active');
+                const is2D = btn.classList.contains('active');
+                if (is2D) {
+                    activeCamera = orthoCamera; controls.object = orthoCamera; controls.enableRotate = false; controls.screenSpacePanning = true;
+                    controls.mouseButtons.LEFT = THREE.MOUSE.PAN; controls.touches.ONE = THREE.TOUCH.PAN;
+                    orthoCamera.position.set(0, 0, 100);
+                } else {
+                    activeCamera = camera; controls.object = camera; controls.enableRotate = true; controls.screenSpacePanning = false;
+                    controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; controls.touches.ONE = THREE.TOUCH.ROTATE;
+                    camera.position.copy(CAM_HOME);
+                }
+                controls.target.copy(CAM_TARGET);
+            }
+        };
+
+        window.togglePlane = function(key) {
+            planeVisible[key] = !planeVisible[key];
+            document.getElementById('btn-plane-' + key).classList.toggle('active');
+            const mesh = planesGroup.getObjectByName(key);
+            if (mesh) mesh.visible = planeVisible[key];
+        };
+
+        init();
+
+        function init() {
+            scene = new THREE.Scene(); scene.background = new THREE.Color(0xffffff);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
+            camera.position.copy(CAM_HOME); camera.up.set(0,0,1);
+            const aspect = window.innerWidth / window.innerHeight;
+            orthoCamera = new THREE.OrthographicCamera(-10*aspect, 10*aspect, 10, -10, 0.1, 2000);
+            orthoCamera.up.set(0,1,0); activeCamera = camera;
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            labelRenderer = new CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute'; labelRenderer.domElement.style.top = '0';
+            labelRenderer.domElement.style.pointerEvents = 'none'; document.body.appendChild(labelRenderer.domElement);
+            controls = new OrbitControls(activeCamera, renderer.domElement);
+            controls.target.copy(CAM_TARGET);
+            controls.enableDamping = true; controls.dampingFactor = 0.1;
+            controls.rotateSpeed = 0.9;
+            controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+            raycaster = new THREE.Raycaster();
+            pointsGroup = new THREE.Group(); triangleGroup = new THREE.Group(); lineGroup = new THREE.Group(); labelGroup = new THREE.Group(); planesGroup = new THREE.Group();
+            scene.add(pointsGroup, triangleGroup, lineGroup, labelGroup, planesGroup);
+            addLights(); buildAxes(); buildGrid(); buildPlanes(); updateOrtho();
+            document.getElementById('zoom-in').addEventListener('click', () => zoom(0.8));
+            document.getElementById('zoom-out').addEventListener('click', () => zoom(1.2));
+            renderer.domElement.addEventListener('pointerdown', onCanvasPointerDown);
+            renderer.domElement.addEventListener('pointerup', onCanvasPointerUp);
+            renderer.domElement.addEventListener('pointercancel', () => { tapStart = null; });
+            window.addEventListener('resize', onResize);
+            window.addEventListener('orientationchange', () => setTimeout(onResize, 200));
+            // iOS Safari: Pinch-Zoom der Seite unterdrücken (Kamera-Zoom über Buttons/2-Finger)
+            document.addEventListener('gesturestart', e => e.preventDefault());
+            document.addEventListener('gesturechange', e => e.preventDefault());
+            animate();
+        }
+
+        function buildAxes() {
+            if (axesGroup) {
+                axesGroup.traverse(o => { if (o.isCSS2DObject && o.element && o.element.parentNode) o.element.parentNode.removeChild(o.element); });
+                scene.remove(axesGroup);
+            }
+            axesGroup = new THREE.Group();
+            const mat = new THREE.MeshLambertMaterial({ color: 0x000000 });
+            const defs = [
+                { v: new THREE.Vector3(1,0,0), l: 'x₁', r: axisRanges.x1 },
+                { v: new THREE.Vector3(0,1,0), l: 'x₂', r: axisRanges.x2 },
+                { v: new THREE.Vector3(0,0,1), l: 'x₃', r: axisRanges.x3 }
+            ];
+            defs.forEach(a => {
+                const from = a.r.min - AXIS_EXT;
+                const to = a.r.max + AXIS_EXT;
+                const len = to - from;
+                const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, len, 12), mat);
+                cyl.position.copy(a.v.clone().multiplyScalar((from + to) / 2));
+                if (a.v.x !== 0) cyl.rotation.z = -Math.PI/2;
+                if (a.v.z !== 0) cyl.rotation.x = Math.PI/2;
+                axesGroup.add(cyl);
+
+                const cone = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.4, 16), mat);
+                cone.position.copy(a.v.clone().multiplyScalar(to));
+                if (a.v.x !== 0) cone.rotation.z = -Math.PI/2;
+                if (a.v.z !== 0) cone.rotation.x = Math.PI/2;
+                axesGroup.add(cone);
+
+                const label = new CSS2DObject(Object.assign(document.createElement('div'), { className:'axis-label', textContent:a.l }));
+                label.position.copy(a.v.clone().multiplyScalar(to + 0.5));
+                axesGroup.add(label);
+
+                for (let i = Math.ceil(a.r.min); i <= Math.floor(a.r.max); i++) {
+                    if (i === 0) continue;
+                    const tick = new THREE.Mesh(new THREE.BoxGeometry(
+                        a.v.x !== 0 ? 0.04 : 0.2,
+                        a.v.y !== 0 ? 0.04 : 0.2,
+                        a.v.z !== 0 ? 0.04 : 0.2
+                    ), mat);
+                    tick.position.copy(a.v.clone().multiplyScalar(i));
+                    axesGroup.add(tick);
+
+                    const tLabel = new CSS2DObject(Object.assign(document.createElement('div'), { className:'tick-label', textContent:i }));
+                    tLabel.position.copy(a.v.clone().multiplyScalar(i));
+                    if (a.v.z !== 0) tLabel.position.x -= 0.4; else tLabel.position.z -= 0.4;
+                    axesGroup.add(tLabel);
+                }
+            });
+
+            // Ursprung
+            const o = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), mat);
+            axesGroup.add(o);
+            scene.add(axesGroup);
+        }
+
+        function buildGrid() {
+            const wasHidden = gridHelper ? !gridHelper.visible : false;
+            if (gridHelper) { scene.remove(gridHelper); gridHelper.geometry.dispose(); gridHelper.material.dispose(); gridHelper = null; }
+            const x1 = axisRanges.x1, x2 = axisRanges.x2, x3 = axisRanges.x3;
+            const a1 = Math.ceil(x1.min), b1 = Math.floor(x1.max);
+            const a2 = Math.ceil(x2.min), b2 = Math.floor(x2.max);
+            const a3 = Math.ceil(x3.min), b3 = Math.floor(x3.max);
+
+            {
+                const pts = [];
+                // x₁-x₂-Ebene (z = 0)
+                for (let y = a2; y <= b2; y++) pts.push(x1.min, y, 0, x1.max, y, 0);
+                for (let x = a1; x <= b1; x++) pts.push(x, x2.min, 0, x, x2.max, 0);
+                if (gridMode === 1) {
+                    // x₁-x₃-Ebene (y = 0)
+                    for (let z = a3; z <= b3; z++) pts.push(x1.min, 0, z, x1.max, 0, z);
+                    for (let x = a1; x <= b1; x++) pts.push(x, 0, x3.min, x, 0, x3.max);
+                    // x₂-x₃-Ebene (x = 0)
+                    for (let z = a3; z <= b3; z++) pts.push(0, x2.min, z, 0, x2.max, z);
+                    for (let y = a2; y <= b2; y++) pts.push(0, y, x3.min, 0, y, x3.max);
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+                gridHelper = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xcfcfcf }));
+            }
+            gridHelper.visible = !wasHidden;
+            scene.add(gridHelper);
+        }
+
+        function buildPlanes() {
+            planesGroup.clear();
+            const x1 = axisRanges.x1, x2 = axisRanges.x2, x3 = axisRanges.x3;
+            const defs = [
+                { key: 'x1x2', corners: [
+                    [x1.min, x2.min, 0], [x1.max, x2.min, 0], [x1.max, x2.max, 0], [x1.min, x2.max, 0]
+                ] },
+                { key: 'x1x3', corners: [
+                    [x1.min, 0, x3.min], [x1.max, 0, x3.min], [x1.max, 0, x3.max], [x1.min, 0, x3.max]
+                ] },
+                { key: 'x2x3', corners: [
+                    [0, x2.min, x3.min], [0, x2.max, x3.min], [0, x2.max, x3.max], [0, x2.min, x3.max]
+                ] }
+            ];
+            defs.forEach(d => {
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(d.corners.flat(), 3));
+                geo.setIndex([0, 1, 2, 0, 2, 3]);
+                // polygonOffset schiebt die Wand im Tiefenpuffer minimal nach hinten, damit sie
+                // mit dem exakt koplanaren Gitter nicht "zittert" (Z-Fighting beim Rotieren).
+                const mat = new THREE.MeshBasicMaterial({ color: PLANE_COLORS[d.key], side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.name = d.key;
+                mesh.visible = planeVisible[d.key];
+                planesGroup.add(mesh);
+            });
+        }
+
+        function updateOrtho() {
+            const aspect = window.innerWidth / window.innerHeight;
+            const spanX = axisRanges.x1.max - axisRanges.x1.min;
+            const spanY = axisRanges.x2.max - axisRanges.x2.min;
+            const half = Math.max(spanX / aspect, spanY) / 2 + 1.5;
+            orthoCamera.left = -half * aspect; orthoCamera.right = half * aspect;
+            orthoCamera.top = half; orthoCamera.bottom = -half;
+            orthoCamera.updateProjectionMatrix();
+        }
+
+        // Erweitert die Achsenbereiche, falls eine Koordinate außerhalb liegt:
+        // max -> Wert+1, min -> Wert-1. Gibt true zurück, wenn etwas geändert wurde.
+        function expandAxesFor(x, y, z) {
+            let changed = false;
+            const vals = { x1: x, x2: y, x3: z };
+            for (const key of ['x1', 'x2', 'x3']) {
+                const v = vals[key], r = axisRanges[key];
+                if (v > r.max) { r.max = v + 1; changed = true; }
+                if (v < r.min) { r.min = v - 1; changed = true; }
+            }
+            return changed;
+        }
+
+        function createPoint(x, y, z, name, isUser) {
+            const sphere = new THREE.Mesh(new THREE.SphereGeometry(POINT_RADIUS, 24, 24), new THREE.MeshBasicMaterial({ color: 0x00008b }));
+            sphere.position.set(x, y, z); sphere.userData = { name, isUser, coords: `(${x} | ${y} | ${z})` };
+            const label = new CSS2DObject(Object.assign(document.createElement('div'), { className:'point-label', textContent:name }));
+            label.position.set(0.39, 0.39, 0.39); sphere.add(label); sphere.userData.label = label; pointsGroup.add(sphere); return sphere;
+        }
+
+        window.confirmCreatePoint = () => {
+            const name = document.getElementById('mname').value.trim();
+            const x = parseFloat(document.getElementById('mx1').value), y = parseFloat(document.getElementById('mx2').value), z = parseFloat(document.getElementById('mx3').value);
+            if (!name) { document.getElementById('mname').focus(); return; }
+            if (isNaN(x) || isNaN(y) || isNaN(z)) return;
+            if (expandAxesFor(x, y, z)) { buildAxes(); buildGrid(); updateOrtho(); }
+            const p = createPoint(x, y, z, name, true);
+            pointCounter++;
+            history.push({ type: 'addPoint', obj: p }); closeModal();
+        };
+
+        function deletePoint(p) {
+            pointsGroup.remove(p);
+            if (p.userData.label && p.userData.label.element) p.userData.label.element.remove();
+            if (p.userData.popup && p.userData.popup.element) p.userData.popup.element.remove();
+            p.userData.popup = null;
+            history.push({ type: 'del', obj: p });
+        }
+
+        // Tap-Erkennung: nur ein echter Tipp (keine Rotier-/Pan-Geste) löst Auswahl/Popup aus.
+        let tapStart = null;
+        function onCanvasPointerDown(e) { tapStart = { x: e.clientX, y: e.clientY, t: Date.now() }; }
+        function onCanvasPointerUp(e) {
+            if (!tapStart) return;
+            const moved = Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y);
+            const dt = Date.now() - tapStart.t;
+            tapStart = null;
+            if (moved < 10 && dt < 500) handleTap(e);
+        }
+
+        function handleTap(e) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            const mouseVec = new THREE.Vector2(
+                ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
+            raycaster.setFromCamera(mouseVec, activeCamera);
+            const intersects = raycaster.intersectObjects(pointsGroup.children.filter(p => p.visible));
+            pointsGroup.children.forEach(p => { if(p.userData.popup) { p.remove(p.userData.popup); if(p.userData.popup.element) p.userData.popup.element.remove(); p.userData.popup = null; }});
+            if (intersects.length > 0) {
+                const p = intersects[0].object;
+                if (selectionMode) handleTriangleSelection(p);
+                else if (lineMode) handleLineSelection(p);
+                else {
+                    const div = Object.assign(document.createElement('div'), { className:'coord-popup', innerHTML:`<span>${p.userData.coords}</span>` });
+                    if (p.userData.isUser) {
+                        const del = Object.assign(document.createElement('button'), { className:'del-btn', innerHTML:'🗑️', onclick: (ev) => { ev.stopPropagation(); deletePoint(p); }});
+                        div.appendChild(del);
+                    }
+                    const popup = new CSS2DObject(div); popup.position.set(0, 0, -0.6); p.add(popup); p.userData.popup = popup;
+                }
+            }
+        }
+
+        // --- Auswahl abbrechen (Dreieck- und Strecken-Werkzeug) ---
+        window.cancelSelection = () => {
+            selectedPoints.forEach(pt => pt.material.color.set(0x00008b));
+            selectedPoints = [];
+            selectionMode = false;
+            lineMode = false;
+            hideToast();
+            setPanelsCollapsed(false);
+        };
+
+        // --- Dreieck-Werkzeug ---
+        window.startTriangleSelection = () => { selectionMode = true; lineMode = false; selectedPoints = []; showToast('Wähle drei Punkte aus'); setPanelsCollapsed(true); };
+        function handleTriangleSelection(p) {
+            if (selectedPoints.includes(p)) return;
+            selectedPoints.push(p); p.material.color.set(0x007AFF);
+            if (selectedPoints.length === 3) {
+                createTriangle(selectedPoints); selectionMode = false; hideToast();
+                selectedPoints.forEach(pt => pt.material.color.set(0x00008b)); selectedPoints = []; setPanelsCollapsed(false);
+            }
+        }
+        function createTriangle(pts) {
+            const geo = new THREE.BufferGeometry().setFromPoints(pts.map(p => p.position)); geo.setIndex([0, 1, 2]); geo.computeVertexNormals();
+            const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
+            mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 })));
+            let labelsInStep = []; const pos = pts.map(pt => pt.position);
+            for(let i=0; i<3; i++) {
+                const A = pos[i], B = pos[(i+1)%3], C = pos[(i+2)%3];
+                const v1 = new THREE.Vector3().subVectors(A, B).normalize(), v2 = new THREE.Vector3().subVectors(C, B).normalize();
+                if (Math.abs(v1.dot(v2)) < 0.05) {
+                    const size = 0.5, angPoints = [];
+                    for (let j = 0; j <= 20; j++) { const angle = (j / 20) * (Math.PI / 2); angPoints.push(new THREE.Vector3().addVectors(v1.clone().multiplyScalar(Math.cos(angle)*size), v2.clone().multiplyScalar(Math.sin(angle)*size)).add(B)); }
+                    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(angPoints), new THREE.LineBasicMaterial({ color: 0x000000 }));
+                    mesh.add(line);
+                    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+                    dot.position.copy(new THREE.Vector3().addVectors(v1, v2).normalize().multiplyScalar(size*0.6).add(B)); mesh.add(dot);
+                }
+                const key = [pts[i].userData.name, pts[(i+2)%3].userData.name].sort().join('-');
+                if (!sideRegistry.has(key)) {
+                    const bn = pts[(i+1)%3].userData.name[0].toLowerCase();
+                    baseNameCounts[bn] = (baseNameCounts[bn] || 0) + 1;
+                    const name = baseNameCounts[bn] === 1 ? bn : bn + baseNameCounts[bn];
+                    const div = Object.assign(document.createElement('div'), { className:'edge-label', innerHTML: name.length > 1 ? `${name[0]}<sub>${name.substring(1)}</sub>` : name });
+                    const cssLab = new CSS2DObject(div); cssLab.position.copy(new THREE.Vector3().addVectors(A, C).multiplyScalar(0.5)); labelGroup.add(cssLab);
+                    sideRegistry.set(key, { name, labelObj: cssLab }); labelsInStep.push(key);
+                }
+            }
+            triangleGroup.add(mesh); history.push({ type: 'addTri', obj: mesh, newLabels: labelsInStep });
+        }
+
+        // --- Strecken-Werkzeug (unbeschriftet, zwischen zwei Punkten) ---
+        window.startLineSelection = () => { lineMode = true; selectionMode = false; selectedPoints = []; showToast('Wähle zwei Punkte aus'); setPanelsCollapsed(true); };
+        function handleLineSelection(p) {
+            if (selectedPoints.includes(p)) return;
+            selectedPoints.push(p); p.material.color.set(0x007AFF);
+            if (selectedPoints.length === 2) {
+                createLine(selectedPoints[0], selectedPoints[1]); lineMode = false; hideToast();
+                selectedPoints.forEach(pt => pt.material.color.set(0x00008b)); selectedPoints = []; setPanelsCollapsed(false);
+            }
+        }
+        function createLine(a, b) {
+            // Dicke der Strecke = halber Kugelradius
+            const start = a.position.clone(), end = b.position.clone();
+            const dir = new THREE.Vector3().subVectors(end, start);
+            const len = dir.length();
+            if (len < 1e-6) return;
+            const geo = new THREE.CylinderGeometry(POINT_RADIUS / 4, POINT_RADIUS / 4, len, 16);
+            const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            mesh.position.copy(start).add(end).multiplyScalar(0.5);
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+            lineGroup.add(mesh); history.push({ type: 'addLine', obj: mesh });
+        }
+
+        window.undo = () => {
+            if (history.length === 0) return;
+            const a = history.pop();
+            if (a.type === 'addPoint') { pointsGroup.remove(a.obj); if(a.obj.userData.label && a.obj.userData.label.element) a.obj.userData.label.element.remove(); pointCounter = Math.max(0, pointCounter - 1); }
+            else if (a.type === 'addLine') { lineGroup.remove(a.obj); a.obj.geometry.dispose(); }
+            else if (a.type === 'addTri') { triangleGroup.remove(a.obj); if (a.newLabels) a.newLabels.forEach(k => { const e = sideRegistry.get(k); if(e) { labelGroup.remove(e.labelObj); e.labelObj.element.remove(); let b = e.name[0]; baseNameCounts[b]--; sideRegistry.delete(k); } }); }
+            else if (a.type === 'del') { pointsGroup.add(a.obj); }
+        };
+
+        function showToast(txt) { document.getElementById('toast-text').textContent = txt; const t = document.getElementById('toast'); t.style.display = 'flex'; }
+        function hideToast() { document.getElementById('toast').style.display = 'none'; }
+
+        function addLights() { scene.add(new THREE.AmbientLight(0xffffff, 1.4)); const d = new THREE.DirectionalLight(0xffffff, 0.8); d.position.set(20, 20, 20); scene.add(d); }
+        function zoom(f) { if(activeCamera === orthoCamera) { orthoCamera.zoom /= f; orthoCamera.updateProjectionMatrix(); } else { camera.position.lerp(controls.target, 1-f); } controls.update(); }
+        function onResize() {
+            const aspect = window.innerWidth/window.innerHeight;
+            camera.aspect = aspect; camera.updateProjectionMatrix();
+            updateOrtho();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, activeCamera); labelRenderer.render(scene, activeCamera); }
+    </script>
+</body>
+</html>
